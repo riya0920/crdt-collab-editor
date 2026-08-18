@@ -1,0 +1,14 @@
+{
+  "name": "crdt-collab-editor",
+  "version": "0.4.0",
+  "type": "module",
+  "description": "Plain-text collaborative editing on a hand-rolled RGA CRDT, with a randomised convergence harness.",
+  "scripts": {
+    "test": "node --test test/*.test.mjs",
+    "converge": "node src/harness.mjs --trials 1000 --clients 3",
+    "converge:10": "node src/harness.mjs --trials 200 --clients 10",
+    "compaction": "node src/measure.mjs 1000 10000",
+    "compaction:big": "node src/measure.mjs 100000"
+  },
+  "license": "MIT"
+}

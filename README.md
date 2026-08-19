@@ -4,11 +4,86 @@ A hand-rolled RGA sequence CRDT, a deliberately hostile network simulator, and a
 randomised convergence harness that runs **1,000 trials** — plus a broken control
 implementation kept in the repo to prove the harness can actually fail.
 
-> **Status: ~40% built.** The CRDT, the network simulator, the convergence
-> harness, offline merge, and tombstone compaction are done and **measured**. The
-> server, the browser UI, presence and the Yjs production path are not — see
-> [Roadmap](#roadmap). There is no running editor yet, and no
-> keystroke-to-render latency number is claimed.
+> **Status: ~65% built.** The CRDT, the network simulator, the convergence
+> harness, offline merge, tombstone compaction, a **WebSocket relay with
+> snapshot+log persistence and crash recovery**, a **working browser editor**,
+> and a **measured keystroke-to-remote-render latency** are done. The Yjs
+> production path and cursor rendering are not — see [Roadmap](#roadmap).
+
+## There is a working editor now
+
+```bash
+npm install
+npm run serve          # http://localhost:8080
+```
+
+Open it in two windows and type in both. Verified end to end in a real browser:
+window 1 typed `hello from the browser`, window 2 received it, window 2 appended
+` | second window`, and window 1 converged to the identical 38 characters with
+the peer counter correct in both.
+
+The client imports **the same `src/rga.mjs`** the test suite runs against —
+served straight from `src/` rather than vendored — so there is one implementation
+rather than two that drift. A test asserts the UI imports it rather than a copy.
+
+One UI detail that is easy to get wrong: a remote edit must not move your caret.
+`render()` preserves the selection across a remote update, because the naive
+version yanks the cursor to the end on every remote keystroke, which is the most
+common bug in a hand-built collaborative textarea.
+
+## Keystroke-to-remote-render latency
+
+```
+$ npm run latency
+
+clients            4
+keystrokes       250
+samples          750 / 750 expected
+p50             2.39 ms
+p95            21.59 ms
+p99            52.16 ms
+max           122.23 ms
+converged       true
+```
+
+**The definition matters more than the number.** This is the interval from
+client A applying a local edit to client B having *applied that same operation to
+its own replica* — not the socket round trip, and not the server's processing
+time. Local echo is deliberately excluded: a CRDT applies the local edit
+immediately, so keystroke-to-*local*-render is sub-millisecond by construction
+and quoting it would be meaningless.
+
+**This is a floor, not a prediction.** All four clients share one Node process,
+one clock, and loopback. There is no network and no clock skew, so the figure
+measures the server plus fan-out path and nothing else. On a real network the p50
+becomes the RTT.
+
+All 750 expected samples arrived and every replica converged, which is the part
+that makes the latency number worth reading at all.
+
+## Persistence and crash recovery
+
+The server is authoritative about **storage and fan-out, not ordering**. It never
+transforms, reorders, or rejects an operation — it appends, broadcasts, and
+snapshots. That is the payoff for choosing a CRDT: correctness lives in the data
+structure, so the server is allowed to be dumb, and a dumb server cannot corrupt
+a document by being clever.
+
+Persistence is **snapshot + operation log**:
+
+* ops append to `<doc>.log.jsonl`
+* every N ops the materialised document is snapshotted and the log is truncated
+* recovery loads the snapshot, then replays only the tail
+
+**The write order is load-bearing and easy to get backwards.** The snapshot is
+written and atomically renamed *before* the log is truncated. Truncating first
+and crashing in between would lose every op the snapshot did not yet contain.
+Written this way, a crash at any point leaves either the old snapshot plus a full
+log, or the new snapshot plus a short one — and both recover to the same
+document.
+
+Four tests cover it, including **a torn final log line** — the expected result of
+a crash mid-append — which must not prevent the complete prefix from recovering.
 
 ## The headline result
 
@@ -134,7 +209,7 @@ This project does plain text and says so.
 ## Run it
 
 ```bash
-npm test                # 17 tests, no dependencies
+npm test                # 25 tests (CRDT + server)
 npm run converge        # 1000 trials, 3 clients
 npm run converge:10     # 200 trials, 10 clients
 npm run compaction      # tombstone growth at 1K and 10K ops
@@ -142,8 +217,9 @@ npm run compaction:big  # the 100K row (slow -- see the O(n) note below)
 node src/harness.mjs --trials 200 --broken 1   # the control group
 ```
 
-**Zero dependencies.** Node's built-in test runner and a hand-written seeded
-PRNG. `fast-check` would be the conventional choice for property testing and is
+**One dependency** (`ws`, for the relay server). The CRDT, the convergence
+harness and the compaction measurement have none — Node's built-in test runner
+and a hand-written seeded PRNG. `fast-check` would be the conventional choice for property testing and is
 the right one for a larger surface; the harness here is ~40 lines of generator
 plus a seed, and vendoring a dependency for that was not worth it.
 
@@ -158,24 +234,28 @@ plus a seed, and vendoring a dependency for that was not worth it.
 | Offline partition + reconnect merge | done |
 | Tombstone compaction with a stable version vector | done |
 | CRDT vs OT write-up | done |
+| WebSocket relay with snapshot + op-log persistence | done |
+| Document recovery on restart, incl. torn-log handling | done |
+| Browser editor, verified converging across two windows | done |
+| Presence (peer count); cursor positions relayed | done |
+| Keystroke-to-remote-render latency measured | done |
+| **Cursor rendering (positions are relayed, not drawn)** | not started |
 | **Yjs integration as the production path** | not started |
-| **WebSocket relay server with snapshot + op-log persistence** | not started |
-| **Document recovery on server restart** | not started |
-| **Browser UI, cursors, presence (who's online)** | not started |
-| **Keystroke-to-remote-render latency distribution** | **not measured** |
-| **Scripted 10-minute offline demo** | not started (simulated equivalent exists) |
+| **Latency across a real network rather than loopback** | not measured |
+| **Scripted 10-minute offline demo in the browser** | not started (simulated equivalent exists) |
 
 ## Honesty notes
 
-* **There is no editor.** No server, no UI, no browser. This is the correctness
-  core plus its test harness, and every claim above is about convergence, not
-  about a running product.
-* **No latency number is claimed.** Keystroke-to-remote-render requires the UI
-  and server that do not exist yet. The simulator's latency figures are *inputs*
-  to the chaos conditions, not measurements of anything.
-* **The clients are simulated, in one process.** They exercise genuine concurrent
-  edits and out-of-order delivery, but not real sockets, real clock skew, or
-  browser event-loop behaviour.
+* **The latency figure is loopback, single-process, shared-clock.** It is a floor
+  for the server and fan-out path, and says nothing about real network
+  conditions. The README states that next to the number rather than below it.
+* **Cursors are relayed but not rendered.** The presence protocol carries each
+  peer's caret position and the UI shows a peer count; drawing other people's
+  cursors in the textarea is not implemented.
+* **The convergence harness clients are still simulated in one process.** They
+  exercise genuine concurrent edits and out-of-order delivery, but not real
+  sockets or browser event-loop behaviour. The server tests use real WebSockets;
+  the 1,000-trial harness does not.
 * **This RGA is O(n) per operation** — `originForIndex` and `toArray` walk the
   whole tree, so building the document is quadratic in its size and the 100K-op
   measurement takes about ten minutes to produce. That is a property of the

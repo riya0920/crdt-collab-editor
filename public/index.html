@@ -1,0 +1,176 @@
+<title>CRDT Collaborative Editor</title>
+<style>
+  :root {
+    --bg: #ffffff; --ink: #1b2733; --muted: #6b7a8c; --line: #dfe5ec;
+    --accent: #2f6fd0; --chip: #f2f5f9;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #10161d; --ink: #e6edf5; --muted: #93a2b3; --line: #263241;
+      --accent: #6ea8fe; --chip: #1a232e;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #10161d; --ink: #e6edf5; --muted: #93a2b3; --line: #263241;
+    --accent: #6ea8fe; --chip: #1a232e;
+  }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font: 15px/1.5 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  .wrap { max-width: 860px; margin: 0 auto; padding: 24px 20px 48px; }
+  h1 { font-size: 17px; margin: 0 0 4px; letter-spacing: -0.01em; }
+  .sub { color: var(--muted); font-size: 13px; margin: 0 0 18px; }
+  .bar {
+    display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
+    padding: 10px 0 14px; border-bottom: 1px solid var(--line); margin-bottom: 14px;
+  }
+  .chip {
+    background: var(--chip); border: 1px solid var(--line); border-radius: 999px;
+    padding: 3px 10px; font-size: 12px; color: var(--muted);
+  }
+  .chip b { color: var(--ink); font-weight: 600; }
+  .dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 6px; }
+  textarea {
+    width: 100%; min-height: 320px; box-sizing: border-box; resize: vertical;
+    background: var(--bg); color: var(--ink); border: 1px solid var(--line);
+    border-radius: 8px; padding: 14px; font: 14px/1.6 ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+  textarea:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+  .note { color: var(--muted); font-size: 12.5px; margin-top: 12px; }
+  code { background: var(--chip); padding: 1px 5px; border-radius: 4px; }
+</style>
+
+<div class="wrap">
+  <h1>Collaborative plain-text editor</h1>
+  <p class="sub">
+    Open this page in two windows and type in both. Plain text only &mdash; rich text
+    is a scope trap, and the README says why.
+  </p>
+
+  <div class="bar">
+    <span class="chip"><span class="dot" id="status-dot" style="background:#c0392b"></span><b id="status">connecting</b></span>
+    <span class="chip">you: <b id="me">&mdash;</b></span>
+    <span class="chip">peers: <b id="peers">0</b></span>
+    <span class="chip">ops applied: <b id="ops">0</b></span>
+    <span class="chip">chars: <b id="chars">0</b></span>
+  </div>
+
+  <textarea id="editor" spellcheck="false" placeholder="Start typing&hellip;"></textarea>
+
+  <p class="note">
+    Every keystroke becomes a CRDT operation referencing the character it follows,
+    never an index. Concurrent edits at the same position both survive and every
+    replica orders them identically &mdash; see <code>src/rga.mjs</code>.
+  </p>
+</div>
+
+<script type="module">
+  // The client mirrors the server's RGA. Served as an ES module so the same
+  // rga.mjs runs in the browser and in the test suite -- one implementation,
+  // not two that can drift.
+  import { Replica } from './rga.mjs';
+
+  const clientId = 'c' + Math.random().toString(36).slice(2, 8);
+  const docId = new URLSearchParams(location.search).get('doc') || 'default';
+  const replica = new Replica(clientId);
+
+  const editor = document.getElementById('editor');
+  const els = {
+    status: document.getElementById('status'),
+    dot: document.getElementById('status-dot'),
+    me: document.getElementById('me'),
+    peers: document.getElementById('peers'),
+    ops: document.getElementById('ops'),
+    chars: document.getElementById('chars'),
+  };
+  els.me.textContent = clientId;
+
+  let opsApplied = 0;
+  let applyingRemote = false;
+
+  const ws = new WebSocket(`ws://${location.host}`);
+
+  ws.addEventListener('open', () => {
+    els.status.textContent = 'connected';
+    els.dot.style.background = '#2e9e5b';
+    ws.send(JSON.stringify({ type: 'join', docId, clientId }));
+  });
+
+  ws.addEventListener('close', () => {
+    els.status.textContent = 'offline (edits buffered)';
+    els.dot.style.background = '#c0392b';
+  });
+
+  ws.addEventListener('message', (ev) => {
+    const msg = JSON.parse(ev.data);
+    if (msg.type === 'snapshot') {
+      for (const op of msg.ops) replica.receive(op);
+      opsApplied += msg.ops.length;
+      render();
+    } else if (msg.type === 'op') {
+      replica.receive(msg.op);
+      opsApplied += 1;
+      render();
+    } else if (msg.type === 'presence') {
+      els.peers.textContent = Math.max(0, msg.peers.length - 1);
+    }
+  });
+
+  function render() {
+    // Preserve the caret across a remote update. Without this, every remote
+    // keystroke yanks your cursor to the end -- the single most common bug in
+    // a naive collaborative textarea.
+    const start = editor.selectionStart;
+    const end = editor.selectionEnd;
+    const before = editor.value;
+    const next = replica.text;
+    if (before !== next) {
+      applyingRemote = true;
+      editor.value = next;
+      const delta = next.length - before.length;
+      const adjust = (pos) => (pos >= before.length ? next.length : pos + (pos > 0 ? delta : 0));
+      editor.setSelectionRange(Math.max(0, adjust(start)), Math.max(0, adjust(end)));
+      applyingRemote = false;
+    }
+    els.ops.textContent = opsApplied;
+    els.chars.textContent = next.length;
+  }
+
+  /** Diff the textarea against the replica and emit the minimal ops. */
+  function syncFromTextarea() {
+    if (applyingRemote) return;
+    const target = editor.value;
+    const current = replica.text;
+    if (target === current) return;
+
+    // Common prefix / suffix, then delete the middle and insert the new middle.
+    let p = 0;
+    while (p < current.length && p < target.length && current[p] === target[p]) p += 1;
+    let s = 0;
+    while (s < current.length - p && s < target.length - p
+           && current[current.length - 1 - s] === target[target.length - 1 - s]) s += 1;
+
+    const ops = [];
+    for (let i = current.length - s - 1; i >= p; i -= 1) {
+      const op = replica.localDelete(i);
+      if (op) ops.push(op);
+    }
+    const inserted = target.slice(p, target.length - s);
+    for (let i = 0; i < inserted.length; i += 1) {
+      ops.push(replica.localInsert(p + i, inserted[i]));
+    }
+
+    for (const op of ops) {
+      if (ws.readyState === 1) ws.send(JSON.stringify({ type: 'op', op }));
+    }
+    els.chars.textContent = replica.text.length;
+  }
+
+  editor.addEventListener('input', syncFromTextarea);
+  editor.addEventListener('keyup', () => {
+    if (ws.readyState === 1) {
+      ws.send(JSON.stringify({ type: 'cursor', cursor: editor.selectionStart }));
+    }
+  });
+</script>

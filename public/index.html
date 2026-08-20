@@ -38,6 +38,27 @@
   }
   textarea:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
   .note { color: var(--muted); font-size: 12.5px; margin-top: 12px; }
+  .peers { display: flex; gap: 6px; flex-wrap: wrap; margin: 0 0 10px; min-height: 24px; }
+  .peer {
+    display: inline-flex; align-items: center; gap: 6px; font-size: 12px;
+    border: 1px solid var(--line); border-radius: 999px; padding: 2px 10px;
+  }
+  .peer .swatch { width: 8px; height: 8px; border-radius: 50%; }
+  .caret {
+    position: absolute; width: 2px; height: 1.25em; pointer-events: none;
+    transition: transform 90ms linear;
+  }
+  .caret::after {
+    content: attr(data-name); position: absolute; top: -1.15em; left: -1px;
+    font-size: 10px; line-height: 1.2; padding: 1px 4px; border-radius: 3px;
+    color: #fff; white-space: nowrap;
+    background: inherit;
+  }
+  .editor-wrap { position: relative; }
+  #mirror {
+    position: absolute; inset: 0; visibility: hidden; pointer-events: none;
+    white-space: pre-wrap; word-wrap: break-word; overflow: hidden;
+  }
   code { background: var(--chip); padding: 1px 5px; border-radius: 4px; }
 </style>
 
@@ -56,7 +77,16 @@
     <span class="chip">chars: <b id="chars">0</b></span>
   </div>
 
-  <textarea id="editor" spellcheck="false" placeholder="Start typing&hellip;"></textarea>
+  <div class="peers" id="peer-strip"></div>
+
+  <div class="editor-wrap">
+    <textarea id="editor" spellcheck="false" placeholder="Start typing&hellip;"></textarea>
+    <!-- A hidden mirror of the textarea with identical metrics. Measuring a caret
+         position inside a textarea is not possible directly, so the text up to the
+         caret is laid out in the mirror and the span's box is read. -->
+    <div id="mirror" aria-hidden="true"></div>
+    <div id="carets"></div>
+  </div>
 
   <p class="note">
     Every keystroke becomes a CRDT operation referencing the character it follows,
@@ -83,7 +113,11 @@
     peers: document.getElementById('peers'),
     ops: document.getElementById('ops'),
     chars: document.getElementById('chars'),
+    strip: document.getElementById('peer-strip'),
+    carets: document.getElementById('carets'),
+    mirror: document.getElementById('mirror'),
   };
+  let peers = [];
   els.me.textContent = clientId;
 
   let opsApplied = 0;
@@ -113,7 +147,9 @@
       opsApplied += 1;
       render();
     } else if (msg.type === 'presence') {
-      els.peers.textContent = Math.max(0, msg.peers.length - 1);
+      peers = msg.peers.filter((p) => p.clientId !== clientId);
+      els.peers.textContent = peers.length;
+      renderPresence();
     }
   });
 
@@ -135,6 +171,60 @@
     }
     els.ops.textContent = opsApplied;
     els.chars.textContent = next.length;
+    renderPresence();
+  }
+
+  /** Stable per-peer colour: same client always gets the same hue. */
+  function colourFor(id) {
+    let h = 0;
+    for (const ch of id) h = (h * 31 + ch.charCodeAt(0)) % 360;
+    return `hsl(${h} 62% 48%)`;
+  }
+
+  /**
+   * Measure where character `index` sits inside the textarea.
+   *
+   * A textarea exposes no geometry for its content, so the text up to the caret
+   * is laid out in a hidden mirror with IDENTICAL font, padding, width and
+   * wrapping, and the trailing span's box is read. Copying the computed style
+   * rather than hard-coding it is what keeps the caret aligned when the font or
+   * padding changes.
+   */
+  function caretPosition(index) {
+    const cs = getComputedStyle(editor);
+    for (const prop of ['fontFamily', 'fontSize', 'lineHeight', 'letterSpacing',
+                        'paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft',
+                        'borderTopWidth', 'borderLeftWidth', 'whiteSpace', 'wordWrap']) {
+      els.mirror.style[prop] = cs[prop];
+    }
+    els.mirror.style.width = cs.width;
+    const text = replica.text.slice(0, Math.max(0, index));
+    els.mirror.textContent = text;
+    const marker = document.createElement('span');
+    marker.textContent = '​';
+    els.mirror.appendChild(marker);
+    return {
+      left: marker.offsetLeft,
+      top: marker.offsetTop - editor.scrollTop,
+    };
+  }
+
+  function renderPresence() {
+    els.strip.innerHTML = peers.map((p) =>
+      `<span class="peer"><span class="swatch" style="background:${colourFor(p.clientId)}"></span>`
+      + `${p.name || p.clientId} @ ${p.cursor ?? 0}</span>`).join('');
+
+    // Remote carets, drawn as absolutely-positioned bars over the textarea.
+    els.carets.innerHTML = '';
+    for (const p of peers) {
+      const pos = caretPosition(p.cursor ?? 0);
+      const el = document.createElement('div');
+      el.className = 'caret';
+      el.dataset.name = p.name || p.clientId;
+      el.style.background = colourFor(p.clientId);
+      el.style.transform = `translate(${pos.left}px, ${pos.top}px)`;
+      els.carets.appendChild(el);
+    }
   }
 
   /** Diff the textarea against the replica and emit the minimal ops. */
@@ -168,9 +258,25 @@
   }
 
   editor.addEventListener('input', syncFromTextarea);
-  editor.addEventListener('keyup', () => {
-    if (ws.readyState === 1) {
-      ws.send(JSON.stringify({ type: 'cursor', cursor: editor.selectionStart }));
-    }
-  });
+
+  // Cursor broadcasts are throttled. A keyup on every keystroke would send a
+  // presence message per character, which costs more bandwidth than the edits
+  // themselves -- and nobody can perceive a caret updating faster than ~20 Hz.
+  let cursorTimer = null;
+  function broadcastCursor() {
+    if (cursorTimer) return;
+    cursorTimer = setTimeout(() => {
+      cursorTimer = null;
+      if (ws.readyState === 1) {
+        ws.send(JSON.stringify({ type: 'cursor', cursor: editor.selectionStart }));
+      }
+    }, 50);
+  }
+  editor.addEventListener('keyup', broadcastCursor);
+  editor.addEventListener('click', broadcastCursor);
+  editor.addEventListener('select', broadcastCursor);
+  window.addEventListener('resize', renderPresence);
+
+  // Expose a tiny surface for the scripted browser demo and for debugging.
+  window.__crdt = { replica, get peers() { return peers; }, caretPosition, renderPresence };
 </script>

@@ -4,11 +4,12 @@ A hand-rolled RGA sequence CRDT, a deliberately hostile network simulator, and a
 randomised convergence harness that runs **1,000 trials** — plus a broken control
 implementation kept in the repo to prove the harness can actually fail.
 
-> **Status: ~65% built.** The CRDT, the network simulator, the convergence
+> **Status: ~85% built.** The CRDT, the network simulator, the convergence
 > harness, offline merge, tombstone compaction, a **WebSocket relay with
 > snapshot+log persistence and crash recovery**, a **working browser editor**,
-> and a **measured keystroke-to-remote-render latency** are done. The Yjs
-> production path and cursor rendering are not — see [Roadmap](#roadmap).
+> a **measured keystroke-to-remote-render latency**, and **rendered remote
+> cursors with presence** are done. The Yjs production path is the remaining gap
+> — see [Roadmap](#roadmap).
 
 ## There is a working editor now
 
@@ -30,6 +31,28 @@ One UI detail that is easy to get wrong: a remote edit must not move your caret.
 `render()` preserves the selection across a remote update, because the naive
 version yanks the cursor to the end on every remote keystroke, which is the most
 common bug in a hand-built collaborative textarea.
+
+## Remote cursors and presence
+
+Each peer appears in a strip with a stable colour and its caret is drawn over the
+textarea. Verified live across two browser windows: window 2 placed its caret at
+character 25 and window 1 rendered `c85k438 @ 25` at `translate(99px, 38px)` —
+second line, mid-line. Moving it to character 2 moved the drawn caret to
+`translate(29px, 16px)`, first line near the start.
+
+**Measuring a caret inside a textarea is not directly possible** — a textarea
+exposes no geometry for its content. The text up to the caret is laid out in a
+hidden mirror div with *copied* computed style (font, padding, width, wrapping)
+and the trailing span's box is read. Copying the style rather than hard-coding it
+is what keeps the caret aligned when the font or padding changes.
+
+**Cursor broadcasts are throttled to 50 ms.** A presence message per keystroke
+costs more bandwidth than the edits themselves, and nobody perceives a caret
+updating faster than ~20 Hz. A test asserts the throttle exists, because it is
+the kind of thing that gets removed during debugging and never put back.
+
+Colours are derived from a hash of the client id, so the same peer is always the
+same colour rather than shuffling on every presence update.
 
 ## Keystroke-to-remote-render latency
 
@@ -239,7 +262,7 @@ plus a seed, and vendoring a dependency for that was not worth it.
 | Browser editor, verified converging across two windows | done |
 | Presence (peer count); cursor positions relayed | done |
 | Keystroke-to-remote-render latency measured | done |
-| **Cursor rendering (positions are relayed, not drawn)** | not started |
+| Remote cursors rendered, with throttled broadcasts and stable colours | done |
 | **Yjs integration as the production path** | not started |
 | **Latency across a real network rather than loopback** | not measured |
 | **Scripted 10-minute offline demo in the browser** | not started (simulated equivalent exists) |
@@ -249,9 +272,12 @@ plus a seed, and vendoring a dependency for that was not worth it.
 * **The latency figure is loopback, single-process, shared-clock.** It is a floor
   for the server and fan-out path, and says nothing about real network
   conditions. The README states that next to the number rather than below it.
-* **Cursors are relayed but not rendered.** The presence protocol carries each
-  peer's caret position and the UI shows a peer count; drawing other people's
-  cursors in the textarea is not implemented.
+* **Cursor geometry is measured via a mirror div**, which is the standard
+  technique for a textarea but is approximate under unusual wrapping. A real
+  editor uses a contenteditable surface or a custom renderer and knows its own
+  layout exactly.
+* **Selection ranges are not shown** — only caret positions. Highlighting another
+  user's selected range needs range geometry, not a single point.
 * **The convergence harness clients are still simulated in one process.** They
   exercise genuine concurrent edits and out-of-order delivery, but not real
   sockets or browser event-loop behaviour. The server tests use real WebSockets;

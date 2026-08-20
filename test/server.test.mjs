@@ -171,3 +171,67 @@ test('the browser client and the tests share one rga.mjs', () => {
   assert.ok(html.includes("from './rga.mjs'"),
     'the UI must import the same module, not a vendored copy that can drift');
 });
+
+
+/* ------------------------------------------------------ presence & cursors */
+
+test('cursor positions are relayed to peers', async () => {
+  const dir = tmp();
+  const server = await createCollabServer({ port: 0, dir, snapshotEvery: 1000 });
+  const url = `ws://127.0.0.1:${server.port}`;
+
+  const a = connect(url, 'cursors', 'a');
+  const b = connect(url, 'cursors', 'b');
+  await Promise.all([a.ready, b.ready]);
+
+  const seen = [];
+  b.ws.on('message', (raw) => {
+    const msg = JSON.parse(raw.toString());
+    if (msg.type === 'presence') seen.push(msg.peers);
+  });
+
+  a.ws.send(JSON.stringify({ type: 'cursor', cursor: 42 }));
+  await settle(300);
+
+  const latest = seen[seen.length - 1] || [];
+  const peerA = latest.find((p) => p.clientId === 'a');
+  assert.ok(peerA, 'peer a must appear in the presence payload');
+  assert.equal(peerA.cursor, 42);
+
+  a.close(); b.close();
+  await server.close();
+});
+
+test('a disconnecting peer is removed from presence', async () => {
+  const dir = tmp();
+  const server = await createCollabServer({ port: 0, dir, snapshotEvery: 1000 });
+  const url = `ws://127.0.0.1:${server.port}`;
+
+  const a = connect(url, 'presence', 'a');
+  const b = connect(url, 'presence', 'b');
+  await Promise.all([a.ready, b.ready]);
+
+  const seen = [];
+  b.ws.on('message', (raw) => {
+    const msg = JSON.parse(raw.toString());
+    if (msg.type === 'presence') seen.push(msg.peers.map((p) => p.clientId));
+  });
+
+  a.close();
+  await settle(400);
+
+  const latest = seen[seen.length - 1] || [];
+  assert.ok(!latest.includes('a'), 'a departed peer must not linger in the strip');
+
+  b.close();
+  await server.close();
+});
+
+test('the UI renders remote carets and throttles cursor broadcasts', () => {
+  const html = readFileSync(path.join(process.cwd(), 'public', 'index.html'), 'utf8');
+  assert.ok(html.includes('class="caret"') || html.includes("className = 'caret'"),
+    'remote carets must be drawn, not merely counted');
+  assert.ok(html.includes('caretPosition'), 'caret geometry must be measured');
+  assert.ok(html.includes('setTimeout') && html.includes('cursorTimer'),
+    'a cursor message per keystroke costs more than the edits themselves');
+});

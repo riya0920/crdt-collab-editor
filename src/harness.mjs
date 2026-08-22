@@ -12,13 +12,18 @@
 import { Replica } from './rga.mjs';
 import { Network, PartitionedNetwork, makeRng, DEFAULT_CONDITIONS, isMainModule } from './network.mjs';
 import { IndexReplica } from './broken.mjs';
+import { YjsReplica } from './yjs-replica.mjs';
 
 const ALPHABET = 'abcdefghijklmnopqrstuvwxyz \n';
 
 /** One randomised trial. Returns a verdict object; never throws on divergence. */
-export function runTrial({ seed, clients = 3, rounds = 30, editsPerRound = 3, conditions = {}, broken = false } = {}) {
+export function runTrial({ seed, clients = 3, rounds = 30, editsPerRound = 3, conditions = {},
+                           broken = false, impl = 'rga' } = {}) {
   const rng = makeRng(seed);
-  const Impl = broken ? IndexReplica : Replica;   // control group, see broken.mjs
+  // Three implementations behind one interface: the hand-rolled RGA, Yjs as the
+  // production path, and the deliberately broken control. The SAME harness runs
+  // all three, which is what makes the comparison worth anything.
+  const Impl = broken ? IndexReplica : (impl === 'yjs' ? YjsReplica : Replica);
   const replicas = [];
   for (let i = 0; i < clients; i += 1) replicas.push(new Impl(`s${i}`));
 
@@ -58,7 +63,7 @@ export function runTrial({ seed, clients = 3, rounds = 30, editsPerRound = 3, co
     textsMatch,
     length: texts[0].length,
     stats: net.stats,
-    docStats: replicas[0].doc.stats(),
+    docStats: typeof replicas[0].doc.stats === 'function' ? replicas[0].doc.stats() : null,
     // Only populated on failure, so a passing run stays cheap to store.
     divergence: converged ? null : { fingerprints, texts },
   };
@@ -103,21 +108,21 @@ export function runOfflineTrial({ seed, clients = 3, offlineRounds = 20, conditi
   };
 }
 
-export function runSuite({ trials = 1000, clients = 3, conditions = {}, startSeed = 1, broken = false } = {}) {
+export function runSuite({ trials = 1000, clients = 3, conditions = {}, startSeed = 1, broken = false, impl = 'rga' } = {}) {
   const failures = [];
   let totalOps = 0;
   const t0 = Date.now();
 
   for (let i = 0; i < trials; i += 1) {
-    const result = runTrial({ seed: startSeed + i, clients, conditions, broken });
-    totalOps += result.docStats.appliedOps;
+    const result = runTrial({ seed: startSeed + i, clients, conditions, broken, impl });
+    totalOps += result.docStats?.appliedOps ?? 0;
     if (!result.converged) failures.push({ seed: result.seed, divergence: result.divergence });
   }
 
   return {
     trials,
     clients,
-    implementation: broken ? 'IndexReplica (deliberately broken control)' : 'RGA',
+    implementation: broken ? 'IndexReplica (deliberately broken control)' : (impl === 'yjs' ? 'Yjs' : 'RGA'),
     conditions: { ...DEFAULT_CONDITIONS, ...conditions },
     passed: trials - failures.length,
     failed: failures.length,
@@ -146,9 +151,10 @@ if (isMainModule(import.meta.url)) {
   const trials = args.trials ?? 1000;
   const clients = args.clients ?? 3;
   const broken = Boolean(args.broken);
+  const impl = args.impl === 'yjs' ? 'yjs' : 'rga';
   console.log(`running ${trials} randomised trials with ${clients} clients` +
               (broken ? ' against the DELIBERATELY BROKEN index-based replica...' : '...'));
-  const summary = runSuite({ trials, clients, broken });
+  const summary = runSuite({ trials, clients, broken, impl });
   console.log(JSON.stringify(summary, null, 2));
   if (broken) {
     // Inverted exit code: the broken implementation MUST diverge. If it does

@@ -4,16 +4,18 @@
   "type": "module",
   "description": "Plain-text collaborative editing on a hand-rolled RGA CRDT, with a randomised convergence harness.",
   "scripts": {
-    "test": "node --test test/rga.test.mjs test/server.test.mjs",
+    "test": "node --test test/rga.test.mjs test/server.test.mjs test/yjs.test.mjs",
     "converge": "node src/harness.mjs --trials 1000 --clients 3",
     "converge:10": "node src/harness.mjs --trials 200 --clients 10",
     "compaction": "node src/measure.mjs 1000 10000",
     "compaction:big": "node src/measure.mjs 100000",
     "serve": "node src/server.mjs --port 8080 --data ./data",
-    "latency": "node src/latency.mjs --clients 4 --keystrokes 250"
+    "latency": "node src/latency.mjs --clients 4 --keystrokes 250",
+    "converge:yjs": "node src/harness.mjs --trials 1000 --clients 3 --impl yjs"
   },
   "license": "MIT",
   "dependencies": {
-    "ws": "^8.18.0"
+    "ws": "^8.18.0",
+    "yjs": "^13.6.32"
   }
 }

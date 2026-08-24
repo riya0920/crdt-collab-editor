@@ -158,6 +158,14 @@ export function createCollabServer({ port = 8080, dir = './data', snapshotEvery 
   };
 
   const http = createServer((req, res) => {
+    // Route on the PATH, not the raw URL.
+    //
+    // `req.url` includes the query string, so comparing it to '/' meant that
+    // every URL carrying one fell through to the 404. The client has always read
+    // its document id from `?doc=`, so `/?doc=notes` -- the documented way to
+    // open a second document -- returned nothing at all. Nobody noticed because
+    // the tests drive the WebSocket directly and never fetch the page.
+    const pathname = (req.url || '/').split('?')[0];
     if (req.url === '/health') {
       res.writeHead(200, { 'content-type': 'application/json' });
       res.end(JSON.stringify({ ok: true, docs: [...stores.keys()] }));
@@ -165,16 +173,28 @@ export function createCollabServer({ port = 8080, dir = './data', snapshotEvery 
     }
     // The browser client imports the SAME rga.mjs the tests run against, so one
     // implementation serves both rather than two copies that drift.
-    if (req.url === '/rga.mjs' || req.url === '/network.mjs') {
+    if (pathname === '/rga.mjs' || pathname === '/network.mjs') {
       try {
         res.writeHead(200, { 'content-type': 'text/javascript; charset=utf-8' });
-        res.end(readFileSync(path.join(srcDir(), req.url.slice(1)), 'utf8'));
+        res.end(readFileSync(path.join(srcDir(), pathname.slice(1)), 'utf8'));
       } catch {
         res.writeHead(404).end();
       }
       return;
     }
-    if (req.url === '/' || req.url.startsWith('/index.html')) {
+    // The scripted demo's script, served from public/ alongside the editor. The
+    // demo drives the same page a human uses, so it has to be reachable the same
+    // way -- a demo you can only run from node is a test, not a demo.
+    if (pathname === '/demo.js') {
+      try {
+        res.writeHead(200, { 'content-type': 'text/javascript; charset=utf-8' });
+        res.end(readFileSync(path.join(srcDir(), '..', 'public', 'demo.js'), 'utf8'));
+      } catch {
+        res.writeHead(404).end();
+      }
+      return;
+    }
+    if (pathname === '/' || pathname === '/index.html') {
       const html = path.join(srcDir(), '..', 'public', 'index.html');
       try {
         res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });

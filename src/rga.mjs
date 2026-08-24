@@ -234,5 +234,15 @@ export class Replica {
   }
 
   get text() { return this.doc.toString(); }
+
+  /**
+   * Visible length. `YjsReplica` has always had this and `Replica` had not,
+   * which quietly broke the substitutability the two implementations are
+   * supposed to have: anything reading `replica.length` got `undefined` from one
+   * of them and a number from the other. The convergence harness never touched
+   * it, so the gap survived until the demo client did.
+   */
+  get length() { return this.doc.length; }
+
   fingerprint() { return this.doc.fingerprint(); }
 }

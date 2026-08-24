@@ -123,35 +123,155 @@
   let opsApplied = 0;
   let applyingRemote = false;
 
-  const ws = new WebSocket(`ws://${location.host}`);
+  // --- the outbox --------------------------------------------------------
+  //
+  // The status line has always said "offline (edits buffered)". Until the
+  // scripted offline demo was written, that was FALSE: ops made while the socket
+  // was down were applied to the local replica and then dropped, because the
+  // send was guarded by `if (ws.readyState === 1)` with nothing on the other
+  // branch. There was also no reconnect at all -- a closed socket stayed closed.
+  //
+  // So a user could work offline, watch their text appear, come back, and lose
+  // every word of it with the UI reporting success throughout. A CRDT makes
+  // convergence guaranteed *given delivery*, and nothing about it delivers
+  // anything for you.
+  //
+  // Ops are queued in order and flushed on reconnect. Re-sending an op the
+  // server already has is free -- CRDT ops are idempotent, which is what makes
+  // an at-least-once outbox the right shape here rather than a liability.
+  let outbox = [];
+  let ws = null;
+  let reconnectTimer = null;
+  let manualOffline = false;
 
-  ws.addEventListener('open', () => {
-    els.status.textContent = 'connected';
-    els.dot.style.background = '#2e9e5b';
-    ws.send(JSON.stringify({ type: 'join', docId, clientId }));
-  });
-
-  ws.addEventListener('close', () => {
-    els.status.textContent = 'offline (edits buffered)';
-    els.dot.style.background = '#c0392b';
-  });
-
-  ws.addEventListener('message', (ev) => {
-    const msg = JSON.parse(ev.data);
-    if (msg.type === 'snapshot') {
-      for (const op of msg.ops) replica.receive(op);
-      opsApplied += msg.ops.length;
-      render();
-    } else if (msg.type === 'op') {
-      replica.receive(msg.op);
-      opsApplied += 1;
-      render();
-    } else if (msg.type === 'presence') {
-      peers = msg.peers.filter((p) => p.clientId !== clientId);
-      els.peers.textContent = peers.length;
-      renderPresence();
+  function send(payload) {
+    if (ws && ws.readyState === 1) {
+      ws.send(JSON.stringify(payload));
+      return true;
     }
-  });
+    if (payload.type === 'op') outbox.push(payload);
+    els.outbox && (els.outbox.textContent = outbox.length);
+    return false;
+  }
+
+  function flushOutbox() {
+    if (!ws || ws.readyState !== 1) return 0;
+    const pending = outbox;
+    outbox = [];
+    for (const payload of pending) ws.send(JSON.stringify(payload));
+    els.outbox && (els.outbox.textContent = outbox.length);
+    return pending.length;
+  }
+
+  function connect() {
+    if (manualOffline) return;
+    ws = new WebSocket(`ws://${location.host}`);
+
+    ws.addEventListener('open', () => {
+      els.status.textContent = 'connected';
+      els.dot.style.background = '#2e9e5b';
+      ws.send(JSON.stringify({ type: 'join', docId, clientId }));
+      const flushed = flushOutbox();
+      if (flushed) els.status.textContent = `connected (flushed ${flushed})`;
+    });
+
+    ws.addEventListener('close', () => {
+      els.status.textContent = outbox.length
+        ? `offline (${outbox.length} edits buffered)` : 'offline';
+      els.dot.style.background = '#c0392b';
+      // Fixed backoff rather than exponential: this is a single relay on a LAN,
+      // and a user who reconnects after a lift ride should not wait 30 seconds
+      // because the backoff has wound up.
+      if (!manualOffline && !reconnectTimer) {
+        reconnectTimer = setTimeout(() => { reconnectTimer = null; connect(); }, 1000);
+      }
+    });
+
+    ws.addEventListener('message', (ev) => {
+      const msg = JSON.parse(ev.data);
+      if (msg.type === 'snapshot') {
+        for (const op of msg.ops) replica.receive(op);
+        opsApplied += msg.ops.length;
+        render();
+      } else if (msg.type === 'op') {
+        replica.receive(msg.op);
+        opsApplied += 1;
+        render();
+      } else if (msg.type === 'presence') {
+        peers = msg.peers.filter((p) => p.clientId !== clientId);
+        els.peers.textContent = peers.length;
+        renderPresence();
+      }
+    });
+  }
+
+  connect();
+
+  // --- scripted demo mode --------------------------------------------------
+  //
+  // ?demo=offline runs the ten-minute script in this window as writer B, with a
+  // second headless client standing in for A over its own socket. `speed`
+  // divides every delay: 1 is the real ten minutes, 60 makes it ten seconds.
+  if (new URLSearchParams(location.search).get('demo') === 'offline') {
+    const speed = Number(new URLSearchParams(location.search).get('speed') || 1);
+    import('./demo.js').then(async ({ run }) => {
+      const banner = document.createElement('div');
+      banner.style.cssText = 'position:fixed;left:0;right:0;bottom:0;background:#111;color:#ddd;'
+        + 'font:12px ui-monospace,Menlo,Consolas,monospace;padding:8px 12px;max-height:34vh;'
+        + 'overflow:auto;white-space:pre-wrap;z-index:50';
+      banner.id = 'demo-log';
+      document.body.appendChild(banner);
+      const log = (line) => { banner.textContent += line + String.fromCharCode(10); banner.scrollTop = 1e9; };
+      log(`scripted offline demo — 10 minutes at ${speed}x`);
+
+      // A is a second client on its own socket, so the offline segment is a real
+      // disconnection between two real peers rather than a simulated one.
+      const peerSocketFor = () => {
+        const rep = new Replica('demo-A');
+        let sock = null; let box = []; let manual = false;
+        const open = () => {
+          sock = new WebSocket(`ws://${location.host}`);
+          sock.addEventListener('open', () => {
+            sock.send(JSON.stringify({ type: 'join', docId, clientId: 'demo-A' }));
+            const p = box; box = [];
+            for (const m of p) sock.send(JSON.stringify(m));
+          });
+          sock.addEventListener('message', (ev) => {
+            const m = JSON.parse(ev.data);
+            if (m.type === 'snapshot') for (const op of m.ops) rep.receive(op);
+            else if (m.type === 'op') rep.receive(m.op);
+          });
+          sock.addEventListener('close', () => { if (!manual) setTimeout(open, 500); });
+        };
+        open();
+        return {
+          get online() { return !!sock && sock.readyState === 1; },
+          get outboxSize() { return box.length; },
+          get text() { return rep.text; },
+          fingerprint: () => rep.fingerprint(),
+          goOffline() { manual = true; if (sock) sock.close(); },
+          goOnline() { manual = false; if (!sock || sock.readyState > 1) open(); },
+          type(t) {
+            const at = rep.length;
+            for (let i = 0; i < t.length; i += 1) {
+              const op = rep.localInsert(at + i, t[i]);
+              const msg = { type: 'op', op };
+              if (sock && sock.readyState === 1) sock.send(JSON.stringify(msg));
+              else box.push(msg);
+            }
+          },
+        };
+      };
+
+      await new Promise((r) => setTimeout(r, 400));
+      const out = await run(peerSocketFor(), window.__crdt, { speed, log });
+      log('');
+      log(out.converged
+        ? `CONVERGED — ${out.chars} chars, ${out.maxOutbox} edits flushed on reconnect`
+        : 'DIVERGED — the fingerprints do not match');
+      window.__demoResult = out;
+    });
+  }
 
   function render() {
     // Preserve the caret across a remote update. Without this, every remote
@@ -251,9 +371,7 @@
       ops.push(replica.localInsert(p + i, inserted[i]));
     }
 
-    for (const op of ops) {
-      if (ws.readyState === 1) ws.send(JSON.stringify({ type: 'op', op }));
-    }
+    for (const op of ops) send({ type: 'op', op });
     els.chars.textContent = replica.text.length;
   }
 
@@ -267,7 +385,9 @@
     if (cursorTimer) return;
     cursorTimer = setTimeout(() => {
       cursorTimer = null;
-      if (ws.readyState === 1) {
+      // Cursor position is NOT queued. A caret from four minutes ago is not
+      // worth replaying on reconnect; only the edits are.
+      if (ws && ws.readyState === 1) {
         ws.send(JSON.stringify({ type: 'cursor', cursor: editor.selectionStart }));
       }
     }, 50);
@@ -277,6 +397,37 @@
   editor.addEventListener('select', broadcastCursor);
   window.addEventListener('resize', renderPresence);
 
-  // Expose a tiny surface for the scripted browser demo and for debugging.
-  window.__crdt = { replica, get peers() { return peers; }, caretPosition, renderPresence };
+  // --- the scripted-demo surface ------------------------------------------
+  //
+  // Deliberately drives the SAME code paths a human does: `type` writes into the
+  // textarea and dispatches a real `input` event, so it goes through
+  // syncFromTextarea, the diff, the outbox and the socket. A demo that called
+  // replica.localInsert directly would prove the CRDT works and nothing about
+  // whether the application around it does -- which is exactly where the
+  // buffering bug lived.
+  window.__crdt = {
+    replica,
+    get peers() { return peers; },
+    caretPosition,
+    renderPresence,
+    get outboxSize() { return outbox.length; },
+    get online() { return !!ws && ws.readyState === 1; },
+    goOffline() {
+      manualOffline = true;
+      if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
+      if (ws) ws.close();
+    },
+    goOnline() {
+      manualOffline = false;
+      if (!ws || ws.readyState > 1) connect();
+    },
+    type(text, atIndex) {
+      const at = atIndex === undefined ? editor.value.length : atIndex;
+      editor.value = editor.value.slice(0, at) + text + editor.value.slice(at);
+      editor.dispatchEvent(new Event('input'));
+      return editor.value.length;
+    },
+    fingerprint() { return replica.fingerprint(); },
+    get text() { return replica.text; },
+  };
 </script>

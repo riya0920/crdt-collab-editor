@@ -74,6 +74,83 @@ different vectors. The encoded document state is the content-addressed thing.
 `test('the fingerprint is content-addressed, not the state vector')` builds
 exactly that case — forward and reverse delivery of the same ops — and pins it.
 
+## The scripted offline demo, and the three bugs it found
+
+```bash
+npm run demo          # then open
+# http://localhost:8080/?demo=offline&speed=60
+```
+
+Ten minutes of a two-writer session with one writer disconnected for four of
+them, played as a fixed script so it tells the same story every run and can be
+asserted on at the end. `speed` divides every delay: `1` is the real ten minutes
+to watch, `60` is ten seconds to check.
+
+Verified in a browser, at 60x:
+
+```
+[ 60s] B B goes offline — lift, tunnel, flaky hotel wifi   A=68ch  B=68ch
+[110s] A typed "4. Roll forward to 50%"                    A=98ch  B=110ch  B outbox=35
+[230s] B typed "(B is still offline and still typing)"     A=130ch B=188ch  B outbox=113
+[300s] B B reconnects — four minutes of edits flush        A=130ch B=188ch  B outbox=113
+[420s] -- quiescent — both replicas must now be identical  A=320ch B=320ch
+
+CONVERGED — 320 chars, 113 edits flushed on reconnect
+```
+
+**The demo drives the UI, not the CRDT.** Every step goes through
+`window.__crdt.type`, which writes into the textarea and dispatches a real
+`input` event — so it runs the diff, the outbox and the socket exactly as a
+keystroke does. A demo calling `replica.localInsert` directly would prove the
+CRDT converges, which the 1,000-trial harness already proves, and would say
+nothing about the application wrapped around it.
+
+That distinction paid immediately. Writing it found three bugs, none of which the
+convergence harness could ever have caught, because none of them were in the CRDT.
+
+### 1. "Offline (edits buffered)" was a lie
+
+The status line had always said that. The send was:
+
+```js
+if (ws.readyState === 1) ws.send(JSON.stringify({ type: 'op', op }));
+```
+
+No else branch, no queue — **and no reconnect anywhere in the file.** A closed
+socket stayed closed forever. So a user could work offline, watch their text
+appear on screen, come back, and lose every word of it, with the UI reporting
+success throughout. The person who typed it is the last person who can tell,
+because their own replica still shows it.
+
+A CRDT makes convergence guaranteed *given delivery*. Nothing about it delivers
+anything for you, and this is what that sentence looks like in practice.
+
+Fixed with an outbox that queues ops while the socket is down and flushes them on
+reconnect. At-least-once is the right shape here rather than a liability: CRDT
+ops are idempotent, so a client unsure what got through can simply replay
+everything — and a test asserts that redelivering an op the server already has
+changes nothing. Cursor positions are deliberately *not* queued; a caret from four
+minutes ago is not worth replaying.
+
+`test/demo.test.mjs` keeps the broken version alongside the fixed one, so the
+loss is reproduced rather than described.
+
+### 2. Any URL with a query string returned 404
+
+The route was `req.url === '/'`, and `req.url` includes the query string. The
+client has always read its document id from `?doc=` — so `/?doc=notes`, the
+documented way to open a second document, served **nothing at all**. Nobody
+noticed because every test drives the WebSocket directly and none of them ever
+fetched the page.
+
+### 3. The two replica implementations were not actually substitutable
+
+`YjsReplica` had a `length` getter and the hand-rolled `Replica` did not, so
+anything reading `replica.length` got a number from one and `undefined` from the
+other. The whole premise of having both is that they are interchangeable behind
+one interface; the convergence harness never touched `length`, so the gap
+survived until the demo client did.
+
 ## There is a working editor now
 
 ```bash
@@ -295,7 +372,7 @@ This project does plain text and says so.
 ## Run it
 
 ```bash
-npm test                # 35 tests (CRDT + server + Yjs)
+npm test                # 40 tests (CRDT + server + Yjs + the offline demo)
 npm run converge        # 1000 trials, 3 clients
 npm run converge:10     # 200 trials, 10 clients
 npm run compaction      # tombstone growth at 1K and 10K ops
@@ -329,10 +406,18 @@ plus a seed, and vendoring a dependency for that was not worth it.
 | Yjs as the production path, through the same harness | done |
 | RGA-vs-Yjs size and speed comparison with a crossover | done |
 | **Latency across a real network rather than loopback** | not measured: one machine |
-| **Scripted 10-minute offline demo in the browser** | not started (simulated equivalent exists) |
+| Scripted 10-minute offline demo, verified in a browser | done |
+| Offline outbox + reconnect (the demo found these missing) | done |
 
 ## Honesty notes
 
+* **The demo's ten minutes are scripted, not observed.** It is a fixed scenario
+  chosen to exercise the offline path, not a recording of anyone actually
+  working. What it establishes is that the application delivers operations across
+  a real disconnection — not that this is what real usage looks like.
+* **The compressed run and the real-time run share one script**, so the fast
+  version is a test of the slow one. They are not two things that happen to look
+  similar.
 * **The RGA-vs-Yjs speed comparison is single-threaded on one machine**, and the
   crossover point (~2,000 ops) is a property of this hardware and this edit
   distribution, not a universal constant.

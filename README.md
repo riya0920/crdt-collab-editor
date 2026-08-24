@@ -386,7 +386,7 @@ and a hand-written seeded PRNG. `fast-check` would be the conventional choice fo
 the right one for a larger surface; the harness here is ~40 lines of generator
 plus a seed, and vendoring a dependency for that was not worth it.
 
-## Roadmap (the remaining ~60%)
+## Roadmap
 
 | Milestone | Status |
 |---|---|

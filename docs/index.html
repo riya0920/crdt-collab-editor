@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Real-Time Collaborative Editor</title><style>
+:root{
+  --bg:#f3f5f7; --panel:#fff; --ink:#141a20; --muted:#5b6873; --faint:#85929e;
+  --line:#d9e0e6; --line2:#bcc7d0; --accent:#1d4e7c; --ok:#1a7a56; --warn:#9c6410;
+  --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#0c1116; --panel:#141b22; --ink:#e3eaf1; --muted:#93a1ae; --faint:#6c7885;
+  --line:#242f39; --line2:#36434e; --accent:#7fadde; --ok:#4dbd8d; --warn:#d8a13d;
+}}
+:root[data-theme="dark"]{
+  --bg:#0c1116; --panel:#141b22; --ink:#e3eaf1; --muted:#93a1ae; --faint:#6c7885;
+  --line:#242f39; --line2:#36434e; --accent:#7fadde; --ok:#4dbd8d; --warn:#d8a13d;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);
+  font:16px/1.6 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;}
+.wrap{max-width:880px;margin:0 auto;padding:36px 20px 72px}
+header{border-bottom:2px solid var(--line2);padding-bottom:20px;margin-bottom:28px}
+.kicker{font-family:var(--mono);font-size:11.5px;letter-spacing:.12em;
+  text-transform:uppercase;color:var(--muted);margin-bottom:10px}
+h1{font-size:clamp(27px,4.6vw,38px);margin:0 0 10px;letter-spacing:-.02em;line-height:1.12}
+.tag{color:var(--muted);margin:0;max-width:66ch;font-size:17px}
+.cta{display:flex;gap:10px;flex-wrap:wrap;margin-top:20px}
+.btn{display:inline-block;padding:9px 16px;border-radius:3px;text-decoration:none;
+  font-size:14.5px;font-weight:600;border:1px solid var(--accent);}
+.btn.solid{background:var(--accent);color:#fff}
+.btn.solid:where(:hover,:focus-visible){opacity:.9}
+.btn.out{color:var(--accent);background:transparent}
+h2{font-size:13px;font-family:var(--mono);text-transform:uppercase;
+  letter-spacing:.08em;color:var(--muted);margin:34px 0 14px;font-weight:600}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:4px;padding:20px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:1px;
+  background:var(--line);border:1px solid var(--line);border-radius:4px;overflow:hidden}
+.cell{background:var(--panel);padding:13px 15px}
+.cell .k{font-size:10.5px;font-family:var(--mono);text-transform:uppercase;
+  letter-spacing:.06em;color:var(--faint)}
+.cell .v{font-size:21px;font-weight:700;font-family:var(--mono);
+  font-variant-numeric:tabular-nums;line-height:1.25}
+.finds{display:flex;flex-direction:column;gap:10px}
+.find{background:var(--panel);border:1px solid var(--line);border-left:3px solid var(--accent);
+  border-radius:3px;padding:15px 17px}
+.find h3{margin:0 0 5px;font-size:15.5px}
+.find p{margin:0;color:var(--muted);font-size:14.5px}
+.find p b{color:var(--ink);font-variant-numeric:tabular-nums}
+table{width:100%;border-collapse:collapse;font-size:14px}
+.scroll{overflow-x:auto;border:1px solid var(--line);border-radius:4px;background:var(--panel)}
+th,td{padding:9px 13px;text-align:left;border-bottom:1px solid var(--line);white-space:nowrap}
+th{font-family:var(--mono);font-size:10.5px;text-transform:uppercase;
+  letter-spacing:.06em;color:var(--faint);font-weight:600}
+td{font-variant-numeric:tabular-nums}
+tr:last-child td{border-bottom:none}
+code{font-family:var(--mono);font-size:13.5px;background:var(--bg);padding:1px 5px;border-radius:2px}
+.note{color:var(--muted);font-size:14px;margin:12px 0 0}
+footer{margin-top:44px;padding-top:18px;border-top:1px solid var(--line);
+  font-family:var(--mono);font-size:12px;color:var(--faint)}
+footer a{color:var(--accent)}
+a:focus-visible,.btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+
+.demo textarea{width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:3px;
+  background:var(--bg);color:var(--ink);font-family:var(--mono);font-size:13.5px;resize:vertical}
+.panes{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+@media (max-width:640px){.panes{grid-template-columns:1fr}}
+.pane-h{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px}
+.site{font-family:var(--mono);font-size:12px;font-weight:700;letter-spacing:.05em;color:var(--accent)}
+.q{font-family:var(--mono);font-size:11.5px;color:var(--faint)}
+.pane-f{margin-top:6px;font-family:var(--mono);font-size:11.5px;color:var(--faint)}
+.verdict{margin-top:16px;padding:10px 13px;border-radius:3px;font-size:14px;
+  font-family:var(--mono);border:1px solid var(--line)}
+.verdict.ok{background:rgba(26,122,86,.10);color:var(--ok);border-color:var(--ok)}
+.verdict.warn{background:rgba(156,100,16,.10);color:var(--warn);border-color:var(--warn)}
+body.offline .panes{opacity:.97}
+button.btn{cursor:pointer;font-family:inherit}
+</style></head><body><div class="wrap">
+<header>
+  <div class="kicker">crdt / real-time / convergence</div>
+  <h1>Real-Time Collaborative Editor</h1>
+  <p class="tag">A hand-rolled RGA CRDT with a randomised convergence harness, a WebSocket relay with crash recovery, and a measured keystroke-to-remote-render latency.</p>
+  <div class="cta"><a class="btn out" href="https://github.com/riya0920/crdt-collab-editor">Source on GitHub</a></div>
+</header>
+<h2>Measured</h2>
+<div class="grid"><div class="cell"><div class="k">tests</div><div class="v">40</div></div><div class="cell"><div class="k">convergence trials</div><div class="v">1,000</div></div><div class="cell"><div class="k">clients</div><div class="v">3 to 10</div></div><div class="cell"><div class="k">offline merge</div><div class="v">yes</div></div><div class="cell"><div class="k">compaction</div><div class="v">measured</div></div></div>
+
+
+<h2>Try it: two replicas, no server</h2>
+<div class="panel demo">
+  <p class="note" style="margin-top:0">
+    Both panes below are real <code>Replica</code> instances, imported from the same
+    <code>src/rga.mjs</code> the server and the convergence harness use. Type in either one.
+    Then disconnect them, type in <em>both</em>, and reconnect.
+  </p>
+  <div class="cta" style="margin:16px 0">
+    <button class="btn out" id="toggle">Disconnect them</button>
+    <button class="btn out" id="conflict">Stage a conflicting edit</button>
+    <button class="btn out" id="reset">Reset</button>
+  </div>
+  <div class="panes">
+    <div class="pane">
+      <div class="pane-h"><span class="site">Replica A</span>
+        <span class="q">buffered: <b id="q-a">0</b></span></div>
+      <textarea id="ta-a" spellcheck="false" rows="7" placeholder="Type here..."></textarea>
+      <div class="pane-f">len <b id="len-a">0</b> &nbsp; fingerprint <code id="fp-a">-</code></div>
+    </div>
+    <div class="pane">
+      <div class="pane-h"><span class="site">Replica B</span>
+        <span class="q">buffered: <b id="q-b">0</b></span></div>
+      <textarea id="ta-b" spellcheck="false" rows="7" placeholder="Type here..."></textarea>
+      <div class="pane-f">len <b id="len-b">0</b> &nbsp; fingerprint <code id="fp-b">-</code></div>
+    </div>
+  </div>
+  <div class="verdict ok" id="verdict">Converged.</div>
+  <p class="note">
+    The fingerprint is a hash of the document state. When both sides show the same one, the
+    replicas agree on every character <em>and its order</em>, which is the property that ordinary
+    last-write-wins syncing cannot give you.
+  </p>
+</div>
+<script type="module" src="./demo.js"></script>
+<h2>What this project actually found</h2>
+<div class="finds"><div class="find"><h3>Convergence is checked by randomised trials, not by example</h3><p>A thousand randomised interleavings across three to ten clients, each asserted to converge. A handful of hand-written scenarios only proves the cases somebody thought of.</p></div><div class="find"><h3>The demo found a bug the CRDT tests could not</h3><p>The status line claimed offline edits were buffered while the send was guarded by <code>readyState === 1</code> with no else branch. Offline edits were shown to the user and silently dropped. The bug was never in the CRDT, it was in never handing it the operations.</p></div><div class="find"><h3>Tombstones are not free, so they are measured</h3><p>Deleted characters stay as tombstones for correctness. Compaction is measured rather than assumed, because unbounded metadata growth is the standard way CRDTs become unusable.</p></div><div class="find"><h3>Compared against Yjs on the same harness</h3><p>The hand-rolled RGA runs the identical convergence harness as a production CRDT library, which is what makes the comparison meaningful rather than flattering.</p></div></div>
+
+<footer>
+  <a href="https://github.com/riya0920/crdt-collab-editor">github.com/riya0920/crdt-collab-editor</a>
+</footer>
+</div></body></html>

@@ -2,8 +2,7 @@
  * The scripted offline demo, run headless against a real relay.
  *
  * Two real WebSocket clients, a real four-minute disconnection (compressed), and
- * the same script the browser plays. The point is not that the CRDT converges —
- * `harness.mjs` establishes that over 1,000 randomised trials. The point is that
+ * the same script the browser plays. The point is not that the CRDT converges - * `harness.mjs` establishes that over 1,000 randomised trials. The point is that
  * the *application* delivers the operations, which is a separate claim and was
  * false until this test was written.
  */
@@ -25,7 +24,7 @@ import { run } from '../public/demo.js';
  * Duplicated deliberately rather than imported: the browser copy lives inside a
  * <script type="module"> in the HTML and cannot be imported by node. Keeping the
  * two in step is a real maintenance cost, and it is the cost of testing the
- * behaviour at all rather than declaring it untestable — the alternative was the
+ * behaviour at all rather than declaring it untestable - the alternative was the
  * status quo, where the buffering claim went unchecked for the life of the repo.
  */
 class HeadlessClient {
@@ -145,7 +144,7 @@ test('the scripted offline demo converges, and flushes what was typed offline', 
   });
 });
 
-test('offline edits are LOST without an outbox — the bug this demo found', async () => {
+test('offline edits are LOST without an outbox - the bug this demo found', async () => {
   await withServer(async (url) => {
     const a = new HeadlessClient(url, 'lossy', 'A');
     const b = new HeadlessClient(url, 'lossy', 'B');

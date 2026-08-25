@@ -10,7 +10,7 @@
  * ## Why it drives the UI rather than the CRDT
  *
  * Every step goes through `window.__crdt.type`, which writes into the textarea
- * and dispatches a real `input` event — so it runs the diff, the outbox and the
+ * and dispatches a real `input` event - so it runs the diff, the outbox and the
  * socket exactly as a human's keystroke does. A demo that called
  * `replica.localInsert` directly would prove the CRDT converges, which the
  * 1,000-trial harness already proves, and would say nothing about the
@@ -27,7 +27,7 @@
  *
  * `speed` divides every delay. `speed=1` is a real ten-minute demo to watch;
  * `speed=60` is a ten-second one for a check. The *script* is identical either
- * way — same steps, same order, same assertions — so the fast version is a test
+ * way - same steps, same order, same assertions - so the fast version is a test
  * of the slow one rather than a different thing that happens to look similar.
  */
 
@@ -35,16 +35,16 @@ const SCRIPT = [
   { at: 0, who: 'A', say: 'both writers connected', type: 'Design doc: rollout plan\n\n' },
   { at: 20, who: 'B', type: '1. Ship behind a flag\n' },
   { at: 40, who: 'A', type: '2. Canary to 5% of traffic\n' },
-  { at: 60, who: 'B', say: 'B goes offline — lift, tunnel, flaky hotel wifi', offline: 'B' },
+  { at: 60, who: 'B', say: 'B goes offline - lift, tunnel, flaky hotel wifi', offline: 'B' },
   { at: 75, who: 'B', type: '3. Watch error rate for 30 minutes\n' },
   { at: 110, who: 'A', type: '4. Roll forward to 50%\n' },
   { at: 150, who: 'B', type: '5. Have a rollback plan written down\n' },
   { at: 190, who: 'A', type: '6. Announce in #eng before 100%\n' },
   { at: 230, who: 'B', type: '   (B is still offline and still typing)\n' },
-  { at: 300, who: 'B', say: 'B reconnects — four minutes of edits flush', online: 'B' },
+  { at: 300, who: 'B', say: 'B reconnects - four minutes of edits flush', online: 'B' },
   { at: 340, who: 'A', type: '7. Post-launch review the next morning\n' },
   { at: 380, who: 'B', type: '8. Delete the flag once it has soaked\n' },
-  { at: 420, who: null, say: 'quiescent — both replicas must now be identical', check: true },
+  { at: 420, who: null, say: 'quiescent - both replicas must now be identical', check: true },
 ];
 
 const TOTAL_SECONDS = 600;
@@ -57,7 +57,7 @@ export function plan(speedFactor = 1) {
  * Run the script against two `window.__crdt` surfaces.
  *
  * `a` and `b` are the two clients. In-page there is only one, so the runner
- * accepts a peer proxy — the browser demo drives its own window and reports what
+ * accepts a peer proxy - the browser demo drives its own window and reports what
  * it can see; `test/demo.test.mjs` drives two real WebSocket clients through the
  * same script and asserts convergence properly.
  */

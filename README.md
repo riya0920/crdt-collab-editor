@@ -1,23 +1,28 @@
 # Real-Time Collaborative Editor (CRDT)
 
+![tests](https://img.shields.io/badge/tests-40%20passing-1a7a56) [![demo](https://img.shields.io/badge/demo-live-1d4e7c)](https://riya0920.github.io/crdt-collab-editor/) ![license](https://img.shields.io/badge/license-MIT-555555)
+
 A hand-rolled RGA sequence CRDT, a deliberately hostile network simulator, and a
-randomised convergence harness that runs **1,000 trials** — plus a broken control
+randomised convergence harness that runs **1,000 trials** - plus a broken control
 implementation kept in the repo to prove the harness can actually fail.
 
-> **Status: ~100% of the spec built.** The CRDT, the network simulator, the
-> convergence harness, offline merge, tombstone compaction, a **WebSocket relay
-> with snapshot+log persistence and crash recovery**, a **working browser
-> editor**, a **measured keystroke-to-remote-render latency**, **rendered remote
-> cursors with presence**, and **Yjs as the production path behind the same
-> interface and the same harness** are all done. What is *not* done is measuring
-> latency across a real network — there is one machine here — see
-> [Roadmap](#roadmap).
+**[Open the live editor](https://riya0920.github.io/crdt-collab-editor/)** &nbsp;·&nbsp; [CRDT notes](docs/CRDT_NOTES.md)
+
+The demo runs two real `Replica` instances in the page, imported from the same
+`src/rga.mjs` the server and the convergence harness use. Type in either pane, disconnect
+them, type in **both**, then reconnect and watch the concurrent edits merge.
+
+[![Deploy to Render](https://img.shields.io/badge/deploy-to%20Render-46E3B7)](https://render.com/deploy?repo=https://github.com/riya0920/crdt-collab-editor)
+
+Deploying additionally brings up the **WebSocket relay**, so two browsers on different
+machines share one document with snapshot and log persistence behind it.
+
 
 ## Yjs and the hand-rolled RGA, behind one interface
 
 The spec's signal is the *pairing*: shipped with the industry-standard tool, and
 understood the internals. Two implementations behind one interface make that
-checkable rather than claimed — **the same 1,000-trial harness runs against
+checkable rather than claimed - **the same 1,000-trial harness runs against
 both**, and the comparison below uses identical edit scripts.
 
 ```
@@ -42,7 +47,7 @@ Identical edit script, 35% deletes:
 inserts: typing "hello" is one run in Yjs and five nodes in the RGA.
 
 **On speed there is a crossover, and it goes the other way at small sizes.** At
-500 ops the RGA is 3x *faster* — Yjs pays a fixed binary-codec cost that the
+500 ops the RGA is 3x *faster* - Yjs pays a fixed binary-codec cost that the
 tiny document cannot amortise. By 8,000 ops Yjs is 3.4x faster and the gap is
 widening, because this RGA is O(n) per operation and therefore quadratic overall.
 
@@ -51,14 +56,14 @@ not; it is better at the sizes that matter.
 
 ### Why Yjs is the production path anyway
 
-Not because the RGA is wrong — the harness says it converges 1,000/1,000 under
+Not because the RGA is wrong - the harness says it converges 1,000/1,000 under
 packet loss. Because of what each is *for*:
 
 * **Encoding.** The 2.5x, above.
 * **Representation.** Yjs uses an index-accelerated linked list, so an insert at
   position *i* is not an O(n) walk. This RGA's O(n) is why its 100K-op
   measurement takes minutes.
-* **Ecosystem.** Awareness, undo, providers, rich text — real work already done
+* **Ecosystem.** Awareness, undo, providers, rich text - real work already done
   correctly by someone else.
 
 The hand-rolled RGA earns its place by being **readable**: ~200 lines where the
@@ -72,7 +77,7 @@ and it produces false divergence: state vectors encode per-client clocks, so two
 replicas that converged to identical content by *different delivery orders* carry
 different vectors. The encoded document state is the content-addressed thing.
 `test('the fingerprint is content-addressed, not the state vector')` builds
-exactly that case — forward and reverse delivery of the same ops — and pins it.
+exactly that case - forward and reverse delivery of the same ops - and pins it.
 
 ## The scripted offline demo, and the three bugs it found
 
@@ -89,18 +94,18 @@ to watch, `60` is ten seconds to check.
 Verified in a browser, at 60x:
 
 ```
-[ 60s] B B goes offline — lift, tunnel, flaky hotel wifi   A=68ch  B=68ch
+[ 60s] B B goes offline - lift, tunnel, flaky hotel wifi   A=68ch  B=68ch
 [110s] A typed "4. Roll forward to 50%"                    A=98ch  B=110ch  B outbox=35
 [230s] B typed "(B is still offline and still typing)"     A=130ch B=188ch  B outbox=113
-[300s] B B reconnects — four minutes of edits flush        A=130ch B=188ch  B outbox=113
-[420s] -- quiescent — both replicas must now be identical  A=320ch B=320ch
+[300s] B B reconnects - four minutes of edits flush        A=130ch B=188ch  B outbox=113
+[420s] -- quiescent - both replicas must now be identical  A=320ch B=320ch
 
-CONVERGED — 320 chars, 113 edits flushed on reconnect
+CONVERGED - 320 chars, 113 edits flushed on reconnect
 ```
 
 **The demo drives the UI, not the CRDT.** Every step goes through
 `window.__crdt.type`, which writes into the textarea and dispatches a real
-`input` event — so it runs the diff, the outbox and the socket exactly as a
+`input` event - so it runs the diff, the outbox and the socket exactly as a
 keystroke does. A demo calling `replica.localInsert` directly would prove the
 CRDT converges, which the 1,000-trial harness already proves, and would say
 nothing about the application wrapped around it.
@@ -116,7 +121,7 @@ The status line had always said that. The send was:
 if (ws.readyState === 1) ws.send(JSON.stringify({ type: 'op', op }));
 ```
 
-No else branch, no queue — **and no reconnect anywhere in the file.** A closed
+No else branch, no queue - **and no reconnect anywhere in the file.** A closed
 socket stayed closed forever. So a user could work offline, watch their text
 appear on screen, come back, and lose every word of it, with the UI reporting
 success throughout. The person who typed it is the last person who can tell,
@@ -128,7 +133,7 @@ anything for you, and this is what that sentence looks like in practice.
 Fixed with an outbox that queues ops while the socket is down and flushes them on
 reconnect. At-least-once is the right shape here rather than a liability: CRDT
 ops are idempotent, so a client unsure what got through can simply replay
-everything — and a test asserts that redelivering an op the server already has
+everything - and a test asserts that redelivering an op the server already has
 changes nothing. Cursor positions are deliberately *not* queued; a caret from four
 minutes ago is not worth replaying.
 
@@ -138,7 +143,7 @@ loss is reproduced rather than described.
 ### 2. Any URL with a query string returned 404
 
 The route was `req.url === '/'`, and `req.url` includes the query string. The
-client has always read its document id from `?doc=` — so `/?doc=notes`, the
+client has always read its document id from `?doc=` - so `/?doc=notes`, the
 documented way to open a second document, served **nothing at all**. Nobody
 noticed because every test drives the WebSocket directly and none of them ever
 fetched the page.
@@ -163,8 +168,7 @@ window 1 typed `hello from the browser`, window 2 received it, window 2 appended
 ` | second window`, and window 1 converged to the identical 38 characters with
 the peer counter correct in both.
 
-The client imports **the same `src/rga.mjs`** the test suite runs against —
-served straight from `src/` rather than vendored — so there is one implementation
+The client imports **the same `src/rga.mjs`** the test suite runs against - served straight from `src/` rather than vendored - so there is one implementation
 rather than two that drift. A test asserts the UI imports it rather than a copy.
 
 One UI detail that is easy to get wrong: a remote edit must not move your caret.
@@ -176,11 +180,10 @@ common bug in a hand-built collaborative textarea.
 
 Each peer appears in a strip with a stable colour and its caret is drawn over the
 textarea. Verified live across two browser windows: window 2 placed its caret at
-character 25 and window 1 rendered `c85k438 @ 25` at `translate(99px, 38px)` —
-second line, mid-line. Moving it to character 2 moved the drawn caret to
+character 25 and window 1 rendered `c85k438 @ 25` at `translate(99px, 38px)` - second line, mid-line. Moving it to character 2 moved the drawn caret to
 `translate(29px, 16px)`, first line near the start.
 
-**Measuring a caret inside a textarea is not directly possible** — a textarea
+**Measuring a caret inside a textarea is not directly possible** - a textarea
 exposes no geometry for its content. The text up to the caret is laid out in a
 hidden mirror div with *copied* computed style (font, padding, width, wrapping)
 and the trailing span's box is read. Copying the style rather than hard-coding it
@@ -211,7 +214,7 @@ converged       true
 
 **The definition matters more than the number.** This is the interval from
 client A applying a local edit to client B having *applied that same operation to
-its own replica* — not the socket round trip, and not the server's processing
+its own replica* - not the socket round trip, and not the server's processing
 time. Local echo is deliberately excluded: a CRDT applies the local edit
 immediately, so keystroke-to-*local*-render is sub-millisecond by construction
 and quoting it would be meaningless.
@@ -227,7 +230,7 @@ that makes the latency number worth reading at all.
 ## Persistence and crash recovery
 
 The server is authoritative about **storage and fan-out, not ordering**. It never
-transforms, reorders, or rejects an operation — it appends, broadcasts, and
+transforms, reorders, or rejects an operation - it appends, broadcasts, and
 snapshots. That is the payoff for choosing a CRDT: correctness lives in the data
 structure, so the server is allowed to be dumb, and a dumb server cannot corrupt
 a document by being clever.
@@ -242,11 +245,11 @@ Persistence is **snapshot + operation log**:
 written and atomically renamed *before* the log is truncated. Truncating first
 and crashing in between would lose every op the snapshot did not yet contain.
 Written this way, a crash at any point leaves either the old snapshot plus a full
-log, or the new snapshot plus a short one — and both recover to the same
+log, or the new snapshot plus a short one - and both recover to the same
 document.
 
-Four tests cover it, including **a torn final log line** — the expected result of
-a crash mid-append — which must not prevent the complete prefix from recovering.
+Four tests cover it, including **a torn final log line** - the expected result of
+a crash mid-append - which must not prevent the complete prefix from recovering.
 
 ## The headline result
 
@@ -266,7 +269,7 @@ failed                 0
 | standard conditions | 1,000 | 3 | **1000 / 1000 converged** |
 | standard conditions | 200 | 10 | **200 / 200 converged** |
 | heavy chaos (25% loss, 20% duplication) | 50 | 4 | **50 / 50 converged** |
-| **broken control** | 200 | 3 | **0 / 200 converged** — as it must |
+| **broken control** | 200 | 3 | **0 / 200 converged** - as it must |
 
 Convergence is checked on the **full structural fingerprint including
 tombstones**, not just the visible text. Two replicas that agree on text but
@@ -275,7 +278,7 @@ comparing text alone is a test that passes right up until it matters.
 
 ## The control group is the point
 
-A convergence test that has never failed proves nothing — it may be asserting
+A convergence test that has never failed proves nothing - it may be asserting
 something trivially true. So `src/broken.mjs` contains `IndexReplica`: the naive
 "two browser tabs and socket.io broadcasting keystrokes" design, where operations
 carry an **index** and remote ops are applied at that index.
@@ -291,7 +294,7 @@ the harness caught the broken implementation on 200/200 trials, as it must
 It is broken for exactly one reason: an index is only meaningful relative to the
 document state that produced it. By the time the op arrives, concurrent edits
 have shifted everything after that position. The exit code for this run is
-**inverted** — if the broken implementation ever converges, the harness has no
+**inverted** - if the broken implementation ever converges, the harness has no
 teeth and the build should fail.
 
 Every failure reports a **seed**, and `runTrial({ seed })` replays it exactly. A
@@ -300,7 +303,7 @@ property test you cannot replay is a flaky test.
 ## Why it converges (the whiteboard version)
 
 Every character is an immutable node with a unique id `{site, counter}`, inserted
-**after a specific node** (its origin) — never at an index.
+**after a specific node** (its origin) - never at an index.
 
 When two sites insert after the *same* origin concurrently, both inserts are kept
 and their sibling order is decided by a total order on ids. Every replica applies
@@ -313,10 +316,10 @@ overlapping-offline-delete walkthrough are in
 
 ## The network simulator is hostile on purpose
 
-Convergence under a *good* network is not evidence of anything — every broken
+Convergence under a *good* network is not evidence of anything - every broken
 design converges when messages arrive once, in order, immediately.
 
-Latency 50–500 ms, 5% loss, 3% duplication, reordering as a natural consequence
+Latency 50-500 ms, 5% loss, 3% duplication, reordering as a natural consequence
 of variable latency, and **retransmission on loss**. That last one matters: a
 permanently dropped op means no CRDT can converge, so testing without
 retransmission "proves" a transport failure rather than a CRDT failure.
@@ -324,8 +327,7 @@ Everything is driven by a seeded PRNG.
 
 ## Offline editing
 
-`PartitionedNetwork` holds a client's operations rather than dropping them —
-modelling a client that buffers locally while offline. On `heal()`, the buffered
+`PartitionedNetwork` holds a client's operations rather than dropping them - modelling a client that buffers locally while offline. On `heal()`, the buffered
 edits flush and the harness asserts every replica converges.
 `test('offline edits merge on reconnect')` runs five seeded scenarios and also
 asserts the partition actually held edits back, so the test cannot pass
@@ -334,7 +336,7 @@ vacuously.
 ## Tombstone compaction, and the bug the test caught
 
 Tombstones cannot be removed eagerly, because a concurrent insert may still name
-one as its origin — that is where CRDT metadata growth comes from. Compaction
+one as its origin - that is where CRDT metadata growth comes from. Compaction
 needs a **stable version vector**: the per-site counter every site has
 acknowledged.
 
@@ -342,7 +344,7 @@ acknowledged.
 stable. That is wrong, and the first version of this code did exactly that. A
 node inserted an hour ago is stable, but if its *deletion* is two seconds old and
 a peer has not seen it yet, that peer can still emit an insert naming the node as
-its origin — compact it away and that insert can never be placed. Permanent
+its origin - compact it away and that insert can never be placed. Permanent
 divergence. The check must be on the **delete operation's** id, which is why
 nodes now carry `deletedBy`.
 
@@ -358,7 +360,7 @@ Measured (3 replicas, 40% delete rate, this machine):
 | 100,000 | 19,682 | 9,799 KB | 2,668 KB | 882 KB | 39,881 | 67.0% | true |
 
 Note the ratio that motivates all of this: at 100K operations the op log is
-**9.8 MB for a 19.7 KB document** — roughly 500× the payload. Compaction takes
+**9.8 MB for a 19.7 KB document** - roughly 500× the payload. Compaction takes
 the live structure from 2.67 MB to 882 KB and the text is byte-identical before
 and after, which is the property that makes it safe rather than merely small.
 
@@ -381,40 +383,25 @@ node src/harness.mjs --trials 200 --broken 1   # the control group
 ```
 
 **Two dependencies** (`ws` for the relay, `yjs` for the production path). The CRDT, the convergence
-harness and the compaction measurement have none — Node's built-in test runner
+harness and the compaction measurement have none - Node's built-in test runner
 and a hand-written seeded PRNG. `fast-check` would be the conventional choice for property testing and is
 the right one for a larger surface; the harness here is ~40 lines of generator
 plus a seed, and vendoring a dependency for that was not worth it.
 
-## Roadmap
+## Known limitations
 
-| Milestone | Status |
+Things this repository does not prove, and what each one would need.
+
+| limitation | why |
 |---|---|
-| RGA CRDT with tombstones and causal buffering | done |
-| Hostile network simulator (latency/loss/dup/reorder) | done |
-| 1,000-trial randomised convergence harness | done |
-| Broken control implementation proving the harness fails | done |
-| Offline partition + reconnect merge | done |
-| Tombstone compaction with a stable version vector | done |
-| CRDT vs OT write-up | done |
-| WebSocket relay with snapshot + op-log persistence | done |
-| Document recovery on restart, incl. torn-log handling | done |
-| Browser editor, verified converging across two windows | done |
-| Presence (peer count); cursor positions relayed | done |
-| Keystroke-to-remote-render latency measured | done |
-| Remote cursors rendered, with throttled broadcasts and stable colours | done |
-| Yjs as the production path, through the same harness | done |
-| RGA-vs-Yjs size and speed comparison with a crossover | done |
 | **Latency across a real network rather than loopback** | not measured: one machine |
-| Scripted 10-minute offline demo, verified in a browser | done |
-| Offline outbox + reconnect (the demo found these missing) | done |
 
 ## Honesty notes
 
 * **The demo's ten minutes are scripted, not observed.** It is a fixed scenario
   chosen to exercise the offline path, not a recording of anyone actually
   working. What it establishes is that the application delivers operations across
-  a real disconnection — not that this is what real usage looks like.
+  a real disconnection - not that this is what real usage looks like.
 * **The compressed run and the real-time run share one script**, so the fast
   version is a test of the slow one. They are not two things that happen to look
   similar.
@@ -428,13 +415,13 @@ plus a seed, and vendoring a dependency for that was not worth it.
   technique for a textarea but is approximate under unusual wrapping. A real
   editor uses a contenteditable surface or a custom renderer and knows its own
   layout exactly.
-* **Selection ranges are not shown** — only caret positions. Highlighting another
+* **Selection ranges are not shown** - only caret positions. Highlighting another
   user's selected range needs range geometry, not a single point.
 * **The convergence harness clients are still simulated in one process.** They
   exercise genuine concurrent edits and out-of-order delivery, but not real
   sockets or browser event-loop behaviour. The server tests use real WebSockets;
   the 1,000-trial harness does not.
-* **This RGA is O(n) per operation** — `originForIndex` and `toArray` walk the
+* **This RGA is O(n) per operation** - `originForIndex` and `toArray` walk the
   whole tree, so building the document is quadratic in its size and the 100K-op
   measurement takes about ten minutes to produce. That is a property of the
   educational implementation, not of RGA: production CRDTs use a block-wise

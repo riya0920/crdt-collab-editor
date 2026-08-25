@@ -5,7 +5,7 @@
  *
  * "Authoritative" here means authoritative about *storage and fan-out*, not
  * about ordering. The server never transforms, reorders, or rejects an
- * operation — it appends it to the log, broadcasts it, and occasionally
+ * operation - it appends it to the log, broadcasts it, and occasionally
  * snapshots. That is the whole point of choosing a CRDT: correctness is a
  * property of the data structure, so the server is allowed to be dumb, and a
  * dumb server is one that cannot corrupt a document by being clever.
@@ -24,7 +24,7 @@
  * and fsync-ordered BEFORE the log is truncated. Truncating first and crashing
  * in between would lose every op the snapshot did not yet contain. Written this
  * way, a crash at any point leaves either the old snapshot plus a full log, or
- * the new snapshot plus a short one — both recover to the same document.
+ * the new snapshot plus a short one - both recover to the same document.
  */
 import { createServer } from 'node:http';
 import { mkdirSync, readFileSync, writeFileSync, appendFileSync, existsSync, renameSync, rmSync } from 'node:fs';
@@ -269,7 +269,7 @@ export function createCollabServer({ port = 8080, dir = './data', snapshotEvery 
   }
 
   return new Promise((resolve) => {
-    http.listen(port, () => resolve({
+    http.listen(port, process.env.PORT ? '0.0.0.0' : undefined, () => resolve({
       http,
       wss,
       stores,
@@ -296,7 +296,8 @@ function parseArgs(argv) {
 
 if (isMainModule(import.meta.url)) {
   const args = parseArgs(process.argv);
-  const port = Number(args.port ?? 8080);
+  // PORT is what every managed host assigns; --port stays for local use.
+  const port = Number(args.port ?? process.env.PORT ?? 8080);
   const dir = args.data ?? './data';
   createCollabServer({ port, dir }).then((s) => {
     console.log(`collab server on http://localhost:${s.port}  (data: ${dir})`);

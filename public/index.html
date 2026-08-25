@@ -65,13 +65,13 @@
 <div class="wrap">
   <h1>Collaborative plain-text editor</h1>
   <p class="sub">
-    Open this page in two windows and type in both. Plain text only &mdash; rich text
+    Open this page in two windows and type in both. Plain text only - rich text
     is a scope trap, and the README says why.
   </p>
 
   <div class="bar">
     <span class="chip"><span class="dot" id="status-dot" style="background:#c0392b"></span><b id="status">connecting</b></span>
-    <span class="chip">you: <b id="me">&mdash;</b></span>
+    <span class="chip">you: <b id="me">-</b></span>
     <span class="chip">peers: <b id="peers">0</b></span>
     <span class="chip">ops applied: <b id="ops">0</b></span>
     <span class="chip">chars: <b id="chars">0</b></span>
@@ -91,7 +91,7 @@
   <p class="note">
     Every keystroke becomes a CRDT operation referencing the character it follows,
     never an index. Concurrent edits at the same position both survive and every
-    replica orders them identically &mdash; see <code>src/rga.mjs</code>.
+    replica orders them identically - see <code>src/rga.mjs</code>.
   </p>
 </div>
 
@@ -222,7 +222,7 @@
       banner.id = 'demo-log';
       document.body.appendChild(banner);
       const log = (line) => { banner.textContent += line + String.fromCharCode(10); banner.scrollTop = 1e9; };
-      log(`scripted offline demo — 10 minutes at ${speed}x`);
+      log(`scripted offline demo - 10 minutes at ${speed}x`);
 
       // A is a second client on its own socket, so the offline segment is a real
       // disconnection between two real peers rather than a simulated one.
@@ -267,8 +267,8 @@
       const out = await run(peerSocketFor(), window.__crdt, { speed, log });
       log('');
       log(out.converged
-        ? `CONVERGED — ${out.chars} chars, ${out.maxOutbox} edits flushed on reconnect`
-        : 'DIVERGED — the fingerprints do not match');
+        ? `CONVERGED - ${out.chars} chars, ${out.maxOutbox} edits flushed on reconnect`
+        : 'DIVERGED - the fingerprints do not match');
       window.__demoResult = out;
     });
   }

@@ -1,0 +1,18 @@
+# Render blueprint. Import this repository at https://render.com/deploy and the
+# collaborative editor comes up with no further configuration.
+#
+# One service serves both the editor and the WebSocket relay, so a visitor can
+# open the URL in two tabs and watch the two replicas converge. Snapshots and the
+# operation log are written to disk; on the free plan that disk is ephemeral, so
+# a restart resets the document, which is fine for a demo and is why the crash
+# recovery test drives the real filesystem rather than this deployment.
+services:
+  - type: web
+    name: crdt-collab-editor
+    runtime: node
+    plan: free
+    buildCommand: npm install --omit=dev
+    startCommand: node src/server.mjs --data /tmp/crdt-data
+    envVars:
+      - key: NODE_VERSION
+        value: "20"

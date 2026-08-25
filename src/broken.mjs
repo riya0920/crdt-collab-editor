@@ -2,7 +2,7 @@
  * The naive implementation, kept deliberately, so the harness can be shown to
  * FAIL on it.
  *
- * A convergence test that has never failed proves nothing — it may be asserting
+ * A convergence test that has never failed proves nothing - it may be asserting
  * something trivially true, or comparing replicas that were never given a chance
  * to diverge. This is the control group.
  *
@@ -12,7 +12,7 @@
  * broken for one reason: an index is only meaningful relative to the document
  * state that produced it. By the time the operation arrives, concurrent edits
  * have shifted everything after that position, so the character lands in the
- * wrong place — and once two replicas disagree, they never recover.
+ * wrong place - and once two replicas disagree, they never recover.
  *
  * Run `node src/harness.mjs --broken 1` to watch it diverge.
  */

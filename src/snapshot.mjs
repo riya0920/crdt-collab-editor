@@ -1,5 +1,5 @@
 /**
- * Snapshots and tombstone compaction — the real-world CRDT pain point.
+ * Snapshots and tombstone compaction - the real-world CRDT pain point.
  *
  * Tombstones cannot be deleted eagerly, because a concurrent insert may still
  * name one as its origin. So a long-lived document accumulates metadata for

@@ -3,13 +3,13 @@
  *
  * The spec's signal is the *pairing*: "shipped with the industry-standard tool"
  * plus "understood the internals". Two implementations behind one interface make
- * that checkable rather than claimed — the **same 1,000-trial convergence
+ * that checkable rather than claimed - the **same 1,000-trial convergence
  * harness** runs against both, and the size comparison below is measured on
  * identical operation streams.
  *
  * ## Why Yjs is the production path and the hand-rolled RGA is not
  *
- * Not because RGA is wrong — the harness says it converges 1,000/1,000 under
+ * Not because RGA is wrong - the harness says it converges 1,000/1,000 under
  * packet loss. It is a question of what each is *for*:
  *
  *   * **Encoding.** Yjs ships a binary format with run-length encoding of

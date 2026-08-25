@@ -5,8 +5,7 @@
  *
  * Definition, because this number is meaningless without one: the interval from
  * the moment client A applies a local edit to the moment client B has APPLIED
- * that same operation to its own replica. That is the delay a human perceives —
- * not the socket round trip, and not the server's processing time.
+ * that same operation to its own replica. That is the delay a human perceives - * not the socket round trip, and not the server's processing time.
  *
  * Local echo is deliberately excluded. A CRDT applies the local edit
  * immediately, so keystroke-to-LOCAL-render is sub-millisecond by construction

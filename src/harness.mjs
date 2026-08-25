@@ -1,5 +1,5 @@
 /**
- * The convergence harness — the centerpiece artifact.
+ * The convergence harness - the centerpiece artifact.
  *
  * N simulated clients issue randomised concurrent edits over a hostile network.
  * After quiescence, every replica must be **byte-identical**, and not merely in

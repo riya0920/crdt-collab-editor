@@ -1,7 +1,7 @@
 /**
  * A deliberately hostile network simulator.
  *
- * Convergence under a *good* network is not evidence of anything — every broken
+ * Convergence under a *good* network is not evidence of anything - every broken
  * design converges when messages arrive once, in order, immediately. The claim
  * worth making is convergence under latency, reordering, duplication and loss,
  * so that is what this produces.

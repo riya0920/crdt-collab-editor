@@ -96,6 +96,12 @@
 </div>
 
 <script type="module">
+  // The scheme has to follow the page's. A browser refuses to open an insecure
+  // WebSocket from a page loaded over HTTPS, so a hardcoded ws:// works on
+  // localhost and is blocked the moment the app sits behind TLS. That is a bug
+  // no local run can surface, because local runs are http.
+  const WS_URL = `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}`;
+
   // The client mirrors the server's RGA. Served as an ES module so the same
   // rga.mjs runs in the browser and in the test suite -- one implementation,
   // not two that can drift.
@@ -165,7 +171,7 @@
 
   function connect() {
     if (manualOffline) return;
-    ws = new WebSocket(`ws://${location.host}`);
+    ws = new WebSocket(WS_URL);
 
     ws.addEventListener('open', () => {
       els.status.textContent = 'connected';
@@ -230,7 +236,7 @@
         const rep = new Replica('demo-A');
         let sock = null; let box = []; let manual = false;
         const open = () => {
-          sock = new WebSocket(`ws://${location.host}`);
+          sock = new WebSocket(WS_URL);
           sock.addEventListener('open', () => {
             sock.send(JSON.stringify({ type: 'join', docId, clientId: 'demo-A' }));
             const p = box; box = [];

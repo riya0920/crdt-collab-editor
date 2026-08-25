@@ -14,8 +14,9 @@ them, type in **both**, then reconnect and watch the concurrent edits merge.
 
 [![Deploy to Render](https://img.shields.io/badge/deploy-to%20Render-46E3B7)](https://render.com/deploy?repo=https://github.com/riya0920/crdt-collab-editor)
 
-Deploying additionally brings up the **WebSocket relay**, so two browsers on different
-machines share one document with snapshot and log persistence behind it.
+**[The hosted relay](https://crdt-collab-editor.onrender.com)** runs the same editor with the
+WebSocket server behind it, so two browsers on different machines share one document with
+snapshot and log persistence. Free hosting sleeps after 15 minutes idle.
 
 
 ## Yjs and the hand-rolled RGA, behind one interface
